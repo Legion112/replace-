@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace Console\Commands;
 
-use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -51,7 +50,6 @@ class ReplaceLatestWithHashCommand extends Command
             }
         }
 
-        var_dump($array);
         $yaml = Yaml::dump($array, 7, 3, Yaml::DUMP_OBJECT_AS_MAP  | Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK);
 
         file_put_contents($input->getArgument('output'), $yaml);

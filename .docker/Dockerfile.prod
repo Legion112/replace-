@@ -1,1 +1,28 @@
-FROM php:8-cli-a
+FROM fearofcode/phive:0.15.1 as box
+RUN echo 'y' | phive install humbug/box:4.1.0 --global --copy
+WORKDIR /app/
+COPY . /app
+
+FROM php:8.1-cli-alpine as dependency
+WORKDIR /app/
+ARG COMPOSER_ALLOW_SUPERUSER=1
+COPY composer.json composer.lock /app/
+RUN --mount=type=bind,from=composer:2,source=/usr/bin/composer,target=/usr/bin/composer \
+    --mount=type=cache,target=/root/.composer/cache \
+    composer install --no-autoloader --no-interaction
+
+#/usr/local/bin/box
+FROM php:8.1-cli-alpine as phar
+WORKDIR /app/
+COPY --from=dependency /app/vendor /app/vendor
+COPY . /app
+RUN --mount=type=bind,from=composer:2,source=/usr/bin/composer,target=/usr/bin/composer \
+    --mount=type=cache,target=/root/.composer/cache \
+    --mount=type=bind,from=box,source=/usr/local/bin/box,target=/usr/local/bin/box \
+    box compile
+
+FROM php:8.1-cli-alpine
+WORKDIR /app/
+COPY --from=phar /app/dist/rl /usr/local/bin/rl
+
+ENTRYPOINT ["/usr/local/bin/rl"]

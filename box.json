@@ -1,0 +1,17 @@
+{
+  "main": "app.php",
+  "chmod": "0700",
+  "output" : "dist/rl",
+  "blacklist": [
+    ".git",
+    ".docker",
+    ".git",
+    ".docker-compose.yaml",
+    "README.md",
+    "Makefile"
+  ],
+  "directories": [
+    "src",
+    "vendor"
+  ]
+}
