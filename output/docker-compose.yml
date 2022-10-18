@@ -1,0 +1,266 @@
+version: '3.8'
+services:
+   app:
+      build:
+         context: ./
+         dockerfile: ./.docker/app/Dockerfile
+      restart: unless-stopped
+      environment:
+         PHP_IDE_CONFIG: serverName=paxful
+      volumes:
+         - './:/app:delegated'
+         - './storage/framework/views:/app/storage/framework/views:delegated'
+         - './.docker/php/xdebug.ini:/usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini:ro'
+         - './storage:/app/storage:delegated'
+         - './node_modules:/app/node_modules:ro'
+         - '~/.composer/config.json:/home/app/.composer/config.json:ro'
+         - '~/.composer/auth.json:/home/app/.composer/auth.json:ro'
+      depends_on:
+         - migrations
+         - kafka
+         - postgres
+         - redis
+         - mongo
+      extra_hosts:
+         - 'host.docker.internal:host-gateway'
+      networks:
+         - paxful
+         - default
+   frontend:
+      image: 'registry.px.tools/devops/px-images/node14@sha256:2ba037c93ba341eded38dcdf169d5094afa0239074c5a37ca7c76cf1393fd05b'
+      volumes:
+         - './:/app:delegated'
+         - './node_modules:/app/node_modules'
+         - '~/.npmrc:/root/.npmrc:ro'
+   nginx:
+      image: 'registry.px.tools/devops/px-images/nginx@sha256:d3692386cffd3e558b5e356a6955db4dfbe9688bf41de5640b07c391ca01064b'
+      restart: unless-stopped
+      ports:
+         - '${DOCKER_HTTP_PORT:-80}:80'
+         - '${DOCKER_HTTPS_PORT:-443}:443'
+      volumes:
+         - './:/app:ro'
+         - './.docker/nginx.dev/:/etc/nginx/conf.d:ro'
+         - './node_modules:/app/node_modules:ro'
+      networks:
+         paxful:
+            aliases:
+               - monolith
+         default: {  }
+   postgres:
+      image: 'registry.px.tools/paxful/migrations/postgres-demo@sha256:0702370e8a40c2251b69937e2b44a86c9a8c2a976229d538f8979c4c5037fd77'
+      restart: unless-stopped
+      ports:
+         - '${DOCKER_PG_PORT:-5433}:5432'
+      volumes:
+         - './.local_data/postgresql:/var/lib/postgresql/data'
+         - './:/app:ro'
+      environment:
+         POSTGRES_DB: paxful
+         POSTGRES_USER: homestead
+         POSTGRES_PASSWORD: secret
+         PGDATA: /var/lib/postgresql/data
+         HAS_REPLICATION: 'false'
+   migrations:
+      image: 'registry.px.tools/devops/px-images/dbmate-ci@sha256:94a5d7b9512e485c8e98cf62d8f88ff42ff3c1ecf1d69bdf1d4b8bea30cdc00b'
+      env_file:
+         - ./docker/migrations/migrations.env
+      entrypoint:
+         - database-init.sh
+      depends_on:
+         - postgres
+      volumes:
+         - './docker/migrations/database-init.sh:/usr/local/bin/database-init.sh'
+         - '${PATH_TO_MIGRATIONS}/sql/:/sql/:ro'
+   postgres-test:
+      image: 'registry.px.tools/devops/px-images/postgres12@sha256:6bc52a4c24f63cc32db1515d4a4219179e22cd3dabebabc8370da0d42f144ebf'
+      restart: on-failure
+      volumes:
+         - './.docker/postgres/postgres.conf:/etc/postgresql/postgresql.conf:ro'
+      environment:
+         POSTGRES_DB: paxful
+         POSTGRES_USER: homestead
+         POSTGRES_PASSWORD: secret
+      command: 'postgres -c config_file=/etc/postgresql/postgresql.conf'
+   mongo:
+      image: 'mongo:4.2'
+      restart: unless-stopped
+      ports:
+         - '${DOCKER_MONGO_PORT:-27018}:27017'
+      volumes:
+         - './.local_data/mongodb:/data/db'
+   redis:
+      image: 'redis:6.0-alpine'
+      restart: unless-stopped
+      ports:
+         - '${DOCKER_REDIS_PORT:-6380}:6379'
+      command:
+         - '--appendonly yes'
+         - '--databases'
+         - '512'
+      volumes:
+         - './.local_data/redis:/data'
+   beanstalkd:
+      image: 'registry.px.tools/devops/px-images/beanstalkd@sha256:934fa1c193e356d896c7a4df9399c96be0a569d83f3dadac96e20259776716ab'
+      restart: unless-stopped
+   mailhog:
+      image: 'mailhog/mailhog@sha256:8d76a3d4ffa32a3661311944007a415332c4bb855657f4f6c57996405c009bea'
+      restart: on-failure
+      environment:
+         MH_UI_WEB_PATH: mailhog
+   zookeeper:
+      image: 'bitnami/zookeeper:3.6.1'
+      restart: unless-stopped
+      environment:
+         ALLOW_ANONYMOUS_LOGIN: 'yes'
+      ports:
+         - '${DOCKER_ZOOKEEPER_PORT:-2181}:2181'
+      volumes:
+         - './.local_data/zookeeper:/bitnami/zookeeper'
+   kafka:
+      image: 'bitnami/kafka:2.5.0'
+      restart: unless-stopped
+      ports:
+         - '${DOCKER_KAFKA_PORT:-9092}:9092'
+      environment:
+         ALLOW_PLAINTEXT_LISTENER: 'yes'
+         KAFKA_CFG_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+         KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+         KAFKA_LISTENERS: 'PLAINTEXT://:9092,PLAINTEXT_HOST://:29092'
+         KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092'
+         ALLOW_ANONYMOUS_LOGIN: 'yes'
+         KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      depends_on:
+         - zookeeper
+      volumes:
+         - './.local_data/kafka:/bitnami/kafka'
+   kafkadrop:
+      image: 'obsidiandynamics/kafdrop@sha256:5337c9e0e2dee204bdde53e90cf97001f44fb9e8c3380340436efa844901a3f4'
+      environment:
+         KAFKA_BROKERCONNECT: 'kafka:9092'
+         JVM_OPTS: '-Xms32M -Xmx64M'
+         SERVER_SERVLET_CONTEXTPATH: /
+      ports:
+         - '${DOCKER_KAFKAMANAGER_PORT:-9006}:9000'
+      depends_on:
+         - kafka
+   accounts_service:
+      image: '779338309896.dkr.ecr.eu-central-1.amazonaws.com/platform/accounts@sha256:ebfa4a3496e391a304ee293d1dc971e37c7faa59637e5f955922688b497db7f2'
+      restart: on-failure
+      command: dev
+      env_file:
+         - ./docker/services/accounts/accounts.service.env
+      ports:
+         - '${DOCKER_ACCOUNTS_APP_PORT:-8002}:8000'
+      depends_on:
+         - postgres
+         - redis
+         - migrations
+      networks:
+         - paxful
+         - default
+      volumes:
+         - './docker/services/accounts/data/oauth2_clients.json:/app/oauth2_clients.json:ro'
+   accounts_worker:
+      image: '779338309896.dkr.ecr.eu-central-1.amazonaws.com/platform/accounts@sha256:ebfa4a3496e391a304ee293d1dc971e37c7faa59637e5f955922688b497db7f2'
+      restart: on-failure
+      command: worker
+      env_file:
+         - ./docker/services/accounts/accounts.service.env
+      ports:
+         - '${DOCKER_ACCOUNTS_WORKER_PORT:-5002}:8000'
+      depends_on:
+         - accounts_service
+   ledger_service:
+      image: '779338309896.dkr.ecr.eu-central-1.amazonaws.com/wallet/app@sha256:cb73251553a886e3cd83f907b41fc63a3870d1be43caffdab18edb375410472a'
+      restart: on-failure
+      env_file:
+         - ./docker/services/ledger/ledger.service.env
+      healthcheck:
+         test:
+            - CMD
+            - curl
+            - '-f'
+            - 'http://localhost:80/_livenessProbe'
+         interval: 10s
+         timeout: 10s
+         retries: 5
+      depends_on:
+         - postgres
+         - migrations
+         - kafka
+      ports:
+         - '${DOCKER_LEDGER_PORT:-9010}:80'
+      networks:
+         - paxful
+         - default
+   monolith_ledger_events_service:
+      image: '779338309896.dkr.ecr.eu-central-1.amazonaws.com/wallet/events@sha256:fa24940fbb07b9ecfc576ba9f90e029ac6537cd25475a26ed15f9631c90e1e35'
+      restart: on-failure
+      depends_on:
+         - postgres
+         - migrations
+         - kafka
+      env_file:
+         - ./docker/services/monolith_ledger_events/monolith-ledger-events.service.env
+      deploy:
+         resources:
+            limits:
+               cpus: '0.1'
+   blockchain-mock:
+      image: '779338309896.dkr.ecr.eu-central-1.amazonaws.com/qa-projects/blockchain-mock@sha256:d32b8654912b627cc84a11425718204bd9baf0f92bc92cf62f7ecc14b1c9fb1a'
+      restart: on-failure
+      ports:
+         - '8890:8890'
+      environment:
+         BITGO_BTC_WALLET: 2N99qZDc18qyg6dbetdLF4wbxRWEXFAwB7p
+         BITGO_ETH_WALLET: 2N99qZDc18qyg6dbetdLF4wbxRWEXFAwB7p
+         NGINX_HOST: 'http://nginx'
+         BITGO_V2_SECRET: CHANGE-ME
+         PRIVATE_KEY_PATH: /root/jwtrs256.key
+         OVEX_WALLET: mq1PkVPs8JD8fn8LTox3X7R65tDpgrJtNp
+         OKEX_ENABLED: 'false'
+         STORE_TYPE: redis
+         REDIS_HOST: redis
+         REDIS_PORT: '6379'
+         USDT_WALLET_BALANCE: '10000000000000'
+         WOS_ENABLED: 'true'
+         WOS_URL: 'https://www.livingroomofsatoshi.com/'
+         WOS_WALLET_BALANCE: '1'
+         WOS_API_TOKEN: CHANGE-ME
+         WOS_API_SECRET: CHANGE-ME
+         TRON_SERVICE_ASSETS: 'USDT,TRX'
+         TRON_SERVICE_USDT_BALANCE: 100000
+         TRON_SERVICE_TRX_BALANCE: 100000
+         FIREBLOCKS_ASSET_CODES: 'ETH,USDT'
+         FIREBLOCKS_GAS_STATION_ERC_20_ACCOUNT_UUID: fa9028eb-82da-4c6d-9b81-0798238993ad
+         FIREBLOCKS_GAS_STATION_ETH_BALANCE: 100
+         FIREBLOCKS_GAS_STATION_USDT_BALANCE: 100000
+         FIREBLOCKS_HOT_WALLET_ERC_20_ACCOUNT_UUID: 589208f6-b245-4000-bf9c-bf4725d7d7ac
+         FIREBLOCKS_HOT_WALLET_ETH_BALANCE: 100
+         FIREBLOCKS_HOT_WALLET_USDT_BALANCE: 100000
+         FIREBLOCKS_SENDOUT_WALLET_ERC_20_ACCOUNT_UUID: 8ed63bd0-58cb-4a4c-a3a1-cd7883c72bac
+         FIREBLOCKS_SENDOUT_WALLET_ETH_BALANCE: 100
+         FIREBLOCKS_SENDOUT_WALLET_USDT_BALANCE: 100000
+         INTERNAL_API_TOKEN: CHANGE-ME
+   prometheus:
+      image: 'prom/pushgateway@sha256:a684e7c830a4b19e564a93bfc3bf713e85b04ab9dfcab5633c14cbba241f9231'
+      restart: on-failure
+   stats-service:
+      image: '779338309896.dkr.ecr.eu-central-1.amazonaws.com/stats/app@sha256:e70ef67f41e2d472359a9bd293e78535814d16f3081bd409dd75b593fc1488d0'
+      restart: on-failure
+      env_file:
+         - ./docker/services/stats/stats.service.env
+      depends_on:
+         - postgres
+         - migrations
+      networks:
+         - paxful
+         - default
+volumes:
+   storage: null
+   node_modules: null
+   esdata: null
+networks:
+   paxful:
+      external: true

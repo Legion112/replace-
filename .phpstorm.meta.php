@@ -1,0 +1,10 @@
+<?php
+// @formatter:off
+
+namespace PHPSTORM_META {
+
+    override(\Symfony\Component\DependencyInjection\ContainerInterface::get(0), map([
+        '' => '@',
+        ])
+    );
+}

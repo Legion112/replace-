@@ -1,0 +1,23 @@
+parameters:
+  # ...
+  mailer.transport: sendmail
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+  # makes classes in src/ available to be used as services
+  # this creates a service per class whose id is the fully-qualified class name
+  Console\:
+    resource: './src/'
+    exclude:
+  # this config only applies to the services created by this file
+  _instanceof:
+    # services whose classes are instances of CustomInterface will be tagged automatically
+    Symfony\Component\Console\Command\Command:
+      tags: ['console.commands']
+  Psr\Log\LoggerInterface:
+
+  Symfony\Component\Console\Application:
+    public: true
+    calls:
+      - addCommands: [ ['@Console\Commands\ReplaceLatestWithHashCommand'] ]
