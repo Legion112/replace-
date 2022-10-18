@@ -10,6 +10,9 @@
     "README.md",
     "Makefile"
   ],
+  "files" : [
+    "services.yaml"
+  ],
   "directories": [
     "src",
     "vendor"

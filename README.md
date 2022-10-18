@@ -8,6 +8,6 @@ version=0.0 make image.build
 
 ## As CLI tool
 ```shell
-docker run -w /tmp -v $(pwd):/tmp/ fearofcode/rl:0.0 replace docker-compose.yaml docker-compose-replaced.yaml
+docker run -it  -v $(pwd)/:/tmp/ fearofcode/rl:0.0 replace /tmp/docker-compose.yml /tmp/docker-compose-replaced.yml
 ```
 # Troubleshooting

@@ -44,7 +44,8 @@ class ReplaceLatestWithHashCommand extends Command
             }
 
             if ($tag === 'latest' || $tag === null)  {
-                $sha256Image = shell_exec(sprintf("docker image inspect %s | jq '.[0].RepoDigests | .[0]'", $image));
+                $sha256ImageJson = shell_exec(sprintf("docker image inspect %s", $image));
+                $sha256Image = json_decode($sha256ImageJson, true)[0]['RepoDigests'][0];
                 $sha256Image = trim($sha256Image, " \t\n\r\0\x0B\"");
                 $array['services'][$service]['image'] = $sha256Image;
             }
