@@ -45,7 +45,16 @@ class ReplaceLatestWithHashCommand extends Command
 
             if ($tag === 'latest' || $tag === null)  {
                 $sha256ImageJson = shell_exec(sprintf("docker image inspect %s", $image));
+                if ($sha256ImageJson === null) {
+                    $output->isDebug() && $output->writeln(sprintf('No local latest tag found for "%s"', $image));
+                    continue;
+                }
                 $sha256Image = json_decode($sha256ImageJson, true)[0]['RepoDigests'][0];
+                var_dump($sha256Image);
+                if ($sha256Image === null) {
+                    $output->isDebug() && $output->writeln(sprintf('Could not extract image from json "%s"', $sha256ImageJson));
+                    continue;
+                }
                 $sha256Image = trim($sha256Image, " \t\n\r\0\x0B\"");
                 $array['services'][$service]['image'] = $sha256Image;
             }
